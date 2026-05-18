@@ -310,6 +310,142 @@ func (c *Client) SetUserLock(username string, lock bool) error {
 	return nil
 }
 
+// DeleteUser menghapus user dari FreeIPA.
+// PERHATIAN: operasi ini PERMANEN dan tidak bisa di-undo.
+// Service account harus punya privilege "Remove Users".
+func (c *Client) DeleteUser(username string) error {
+	conn, err := c.dialAndBindService()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	user, err := c.fetchUser(conn, username)
+	if err != nil {
+		return err
+	}
+
+	delReq := ldap.NewDelRequest(user.DN, nil)
+	if err := conn.Del(delReq); err != nil {
+		if ldap.IsErrorWithCode(err, ldap.LDAPResultInsufficientAccessRights) {
+			return ErrPermissionDenied
+		}
+		if ldap.IsErrorWithCode(err, ldap.LDAPResultNoSuchObject) {
+			return ErrUserNotFound
+		}
+		return fmt.Errorf("delete user failed: %w", err)
+	}
+	return nil
+}
+
+// DeleteUsers menghapus banyak user sekaligus (batch).
+// Return: map[username]error — nil berarti sukses, non-nil berarti gagal.
+// Tetap lanjutkan walau ada yang gagal (partial success).
+func (c *Client) DeleteUsers(usernames []string) map[string]error {
+	results := make(map[string]error, len(usernames))
+	for _, u := range usernames {
+		results[u] = c.DeleteUser(u)
+	}
+	return results
+}
+
+// UserStats mengembalikan jumlah user aktif dan tidak aktif (locked).
+func (c *Client) UserStats() (active, inactive, total int, err error) {
+	conn, err := c.dialAndBindService()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	defer conn.Close()
+
+	// Ambil semua user, hanya atribut nsAccountLock untuk efisiensi
+	req := ldap.NewSearchRequest(
+		c.cfg.LDAPUserBaseDN,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases,
+		0, 30, false,
+		"(objectClass=person)",
+		[]string{"nsAccountLock"},
+		nil,
+	)
+	res, err := conn.Search(req)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("ldap search failed: %w", err)
+	}
+
+	total = len(res.Entries)
+	for _, e := range res.Entries {
+		if strings.EqualFold(e.GetAttributeValue("nsAccountLock"), "true") {
+			inactive++
+		} else {
+			active++
+		}
+	}
+	return active, inactive, total, nil
+}
+
+// ListUsersFiltered mengembalikan daftar user dengan filter status (active/inactive/all).
+// `status`: "active", "inactive", atau "" (semua).
+func (c *Client) ListUsersFiltered(query, status string, limit int) ([]*models.User, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 500
+	}
+	conn, err := c.dialAndBindService()
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	// Base filter
+	baseFilter := "(objectClass=person)"
+	if q := strings.TrimSpace(query); q != "" {
+		safe := ldap.EscapeFilter(q)
+		baseFilter = fmt.Sprintf(
+			"(&(objectClass=person)(|(uid=*%s*)(cn=*%s*)(mail=*%s*)))",
+			safe, safe, safe,
+		)
+	}
+
+	// Tambah filter status
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active":
+		// User yang TIDAK locked (nsAccountLock tidak exist atau bukan "true")
+		baseFilter = fmt.Sprintf("(&%s(!(nsAccountLock=TRUE)))", baseFilter)
+	case "inactive", "locked":
+		// User yang locked
+		baseFilter = fmt.Sprintf("(&%s(nsAccountLock=TRUE))", baseFilter)
+	}
+
+	req := ldap.NewSearchRequest(
+		c.cfg.LDAPUserBaseDN,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases,
+		limit, 30, false,
+		baseFilter,
+		[]string{"uid", "mail", "givenName", "sn", "cn", "displayName", "memberOf", "nsAccountLock"},
+		nil,
+	)
+	res, err := conn.Search(req)
+	if err != nil {
+		return nil, fmt.Errorf("ldap search failed: %w", err)
+	}
+
+	out := make([]*models.User, 0, len(res.Entries))
+	for _, e := range res.Entries {
+		groups := extractGroupNames(e.GetAttributeValues("memberOf"))
+		u := &models.User{
+			Username:    e.GetAttributeValue("uid"),
+			DN:          e.DN,
+			Email:       e.GetAttributeValue("mail"),
+			DisplayName: firstNonEmpty(e.GetAttributeValue("displayName"), e.GetAttributeValue("cn")),
+			FirstName:   e.GetAttributeValue("givenName"),
+			LastName:    e.GetAttributeValue("sn"),
+			Groups:      groups,
+			Locked:      strings.EqualFold(e.GetAttributeValue("nsAccountLock"), "true"),
+			IsAdmin:     containsCI(groups, c.cfg.LDAPAdminGroup),
+		}
+		out = append(out, u)
+	}
+	return out, nil
+}
+
 // ---------- error classification ----------
 
 // classifyBindError memetakan error bind ke sentinel error yang lebih bermakna.

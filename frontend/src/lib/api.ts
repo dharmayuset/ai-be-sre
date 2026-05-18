@@ -76,6 +76,8 @@ import type {
   User,
   AuditListResponse,
   DashboardStats,
+  UserStats,
+  BatchDeleteResponse,
 } from '@/types/api';
 
 export const api = {
@@ -103,9 +105,14 @@ export const api = {
 
   // Admin
   adminStats: () => apiFetch<DashboardStats>('/admin/stats'),
-  adminListUsers: (q?: string) => {
-    const qs = q ? `?q=${encodeURIComponent(q)}` : '';
-    return apiFetch<{ users: User[]; count: number }>(`/admin/users${qs}`);
+  adminUserStats: () => apiFetch<UserStats>('/admin/users/stats'),
+  adminListUsers: (params?: { q?: string; status?: string; limit?: number }) => {
+    const usp = new URLSearchParams();
+    if (params?.q) usp.set('q', params.q);
+    if (params?.status) usp.set('status', params.status);
+    if (params?.limit) usp.set('limit', String(params.limit));
+    const qs = usp.toString();
+    return apiFetch<{ users: User[]; count: number }>(`/admin/users${qs ? `?${qs}` : ''}`);
   },
   adminGetUser: (username: string) =>
     apiFetch<{ user: User }>(`/admin/users/${encodeURIComponent(username)}`),
@@ -119,6 +126,23 @@ export const api = {
       `/admin/users/${encodeURIComponent(username)}/lock`,
       { method: 'POST', body: JSON.stringify({ lock }) },
     ),
+  adminDeleteUser: (username: string) =>
+    apiFetch<{ message: string }>(
+      `/admin/users/${encodeURIComponent(username)}`,
+      { method: 'DELETE' },
+    ),
+  adminBatchDeleteUsers: (usernames: string[]) =>
+    apiFetch<BatchDeleteResponse>('/admin/users/batch-delete', {
+      method: 'POST',
+      body: JSON.stringify({ usernames }),
+    }),
+  adminExportUsersCSVUrl: (params?: { q?: string; status?: string }) => {
+    const usp = new URLSearchParams();
+    if (params?.q) usp.set('q', params.q);
+    if (params?.status) usp.set('status', params.status);
+    const qs = usp.toString();
+    return `${API_BASE}/admin/users/export${qs ? `?${qs}` : ''}`;
+  },
   adminAudit: (params: {
     actor?: string;
     target?: string;

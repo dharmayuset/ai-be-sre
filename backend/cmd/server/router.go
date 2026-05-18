@@ -89,9 +89,13 @@ func buildRouter(cfg *config.Config, logger *slog.Logger,
 
 			r.Get("/admin/stats", adminH.DashboardStats)
 			r.Get("/admin/users", adminH.ListUsers)
+			r.Get("/admin/users/stats", adminH.UserStats)
+			r.Get("/admin/users/export", adminH.ExportUsersCSV)
 			r.Get("/admin/users/{username}", adminH.GetUser)
 			r.Post("/admin/users/{username}/reset-password", adminH.ResetUserPassword)
 			r.Post("/admin/users/{username}/lock", adminH.SetUserLock)
+			r.Delete("/admin/users/{username}", adminH.DeleteUser)
+			r.Post("/admin/users/batch-delete", adminH.BatchDeleteUsers)
 			r.Get("/admin/audit", adminH.ListAuditLogs)
 		})
 	})
