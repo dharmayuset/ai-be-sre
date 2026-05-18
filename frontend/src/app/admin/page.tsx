@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Alert } from '@/components/Alert';
 import { api, ApiClientError } from '@/lib/api';
-import type { DashboardStats } from '@/types/api';
+import type { DashboardStats, UserStats } from '@/types/api';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -17,26 +18,46 @@ export default function AdminDashboard() {
       .catch((e) => {
         setError(e instanceof ApiClientError ? e.message : 'Gagal memuat statistik');
       });
+    api
+      .adminUserStats()
+      .then(setUserStats)
+      .catch((e) => {
+        setError(e instanceof ApiClientError ? e.message : 'Gagal memuat statistik user');
+      });
   }, []);
 
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-xl font-semibold text-slate-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-500">Ringkasan aktivitas sistem.</p>
+        <p className="mt-1 text-sm text-slate-500">Ringkasan aktivitas sistem dan statistik user.</p>
       </header>
 
       {error && <Alert tone="error">{error}</Alert>}
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Event" value={stats?.totalEvents} tone="default" />
-        <StatCard title="Sukses" value={stats?.successCount} tone="success" />
-        <StatCard title="Gagal" value={stats?.failureCount} tone="failure" />
-        <StatCard
-          title="Reset 24h Terakhir"
-          value={stats?.resetCount}
-          tone="info"
-        />
+      {/* User Statistics */}
+      <section>
+        <h2 className="text-base font-semibold text-slate-900 mb-3">Statistik User</h2>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <StatCard title="Total User" value={userStats?.total} tone="default" />
+          <StatCard title="Active" value={userStats?.active} tone="success" />
+          <StatCard title="Inactive / Locked" value={userStats?.inactive} tone="failure" />
+        </div>
+      </section>
+
+      {/* Activity Statistics */}
+      <section>
+        <h2 className="text-base font-semibold text-slate-900 mb-3">Aktivitas Sistem</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard title="Total Event" value={stats?.totalEvents} tone="default" />
+          <StatCard title="Sukses" value={stats?.successCount} tone="success" />
+          <StatCard title="Gagal" value={stats?.failureCount} tone="failure" />
+          <StatCard
+            title="Reset 24h Terakhir"
+            value={stats?.resetCount}
+            tone="info"
+          />
+        </div>
       </section>
 
       <section className="card">

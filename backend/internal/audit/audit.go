@@ -30,6 +30,8 @@ const (
 	ActionAdminReset     Action = "admin_reset_password"
 	ActionLockUser       Action = "admin_lock_user"
 	ActionUnlockUser     Action = "admin_unlock_user"
+	ActionDeleteUser     Action = "admin_delete_user"
+	ActionBatchDelete    Action = "admin_batch_delete"
 )
 
 // Status apakah aksi berhasil atau gagal.

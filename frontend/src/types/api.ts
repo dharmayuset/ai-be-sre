@@ -48,3 +48,22 @@ export interface DashboardStats {
   recentFailures: number;
   resetCount: number;
 }
+
+export interface UserStats {
+  active: number;
+  inactive: number;
+  total: number;
+}
+
+export interface BatchDeleteResult {
+  username: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface BatchDeleteResponse {
+  results: BatchDeleteResult[];
+  successCount: number;
+  failCount: number;
+  total: number;
+}
