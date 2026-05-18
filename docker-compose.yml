@@ -1,0 +1,43 @@
+# Dev orchestration: backend (Go) + frontend (Next.js).
+#
+# Untuk dev di mesin lokal:
+#   docker compose up --build
+#
+# Untuk production: gunakan docker-compose.prod.yml (atau platform native).
+
+services:
+  backend:
+    build:
+      context: ./backend
+    image: ai-be-sre-backend:dev
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persist audit log SQLite
+      - backend-data:/app/data
+    networks: [appnet]
+
+  frontend:
+    build:
+      context: ./frontend
+    image: ai-be-sre-frontend:dev
+    restart: unless-stopped
+    environment:
+      # Sebut backend lewat hostname container
+      BACKEND_URL: http://backend:8080
+      NODE_ENV: production
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks: [appnet]
+
+networks:
+  appnet:
+    driver: bridge
+
+volumes:
+  backend-data:

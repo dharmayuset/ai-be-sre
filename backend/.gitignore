@@ -1,0 +1,23 @@
+# Binaries
+/server
+/bin/
+*.exe
+*.test
+*.out
+
+# Env
+.env
+.env.local
+
+# Data / logs
+data/
+*.db
+*.log
+
+# Vendor (kalau dipakai)
+/vendor/
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
