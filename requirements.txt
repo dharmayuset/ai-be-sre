@@ -1,0 +1,13 @@
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+
+# LDAP client untuk koneksi ke FreeIPA
+ldap3==2.9.1
+
+# Pydantic untuk validasi data + load .env
+pydantic==2.9.2
+pydantic-settings==2.6.0
+
+# Untuk load file .env
+python-dotenv==1.0.1
