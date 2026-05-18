@@ -1,35 +1,21 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-.eggs/
-build/
-dist/
-
-# Virtual environment
-venv/
-env/
-.venv/
-ENV/
-
-# Environment variables (jangan commit credentials!)
-.env
-.env.local
-.env.*.local
+# Repo-level ignores
+.DS_Store
+*.swp
+*.swo
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# Logs
+# Env (jangan commit credentials!)
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+/bin/
+/out/
+/data/
 *.log
-logs/
 
-# OS
-.DS_Store
-Thumbs.db
+# Note: Per-subproject ignores tetap ada di backend/.gitignore dan frontend/.gitignore
