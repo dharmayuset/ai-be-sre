@@ -14,6 +14,7 @@ package email
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"html/template"
@@ -38,6 +39,7 @@ var (
 type Sender interface {
 	SendTemporaryPassword(to, username, tempPassword string) error
 	SendPasswordChanged(to, username string) error
+	SendVPNProfile(to, username string, profileData []byte, filename string) error
 }
 
 // Service adalah implementasi default Sender pakai SMTP.
@@ -92,6 +94,26 @@ func (s *Service) SendPasswordChanged(to, username string) error {
 	return s.send(to, subject, textBody, htmlBody)
 }
 
+// SendVPNProfile mengirim email berisi VPN profile (.tar) sebagai attachment.
+func (s *Service) SendVPNProfile(to, username string, profileData []byte, filename string) error {
+	subject := "VPN Profile Anda"
+	data := map[string]any{
+		"Username": username,
+		"Filename": filename,
+		"FromName": s.cfg.SMTPFromName,
+		"Year":     time.Now().Year(),
+	}
+	textBody, err := renderText(tmplVPNProfileText, data)
+	if err != nil {
+		return err
+	}
+	htmlBody, err := renderHTML(tmplVPNProfileHTML, data)
+	if err != nil {
+		return err
+	}
+	return s.sendWithAttachment(to, subject, textBody, htmlBody, profileData, filename, "application/x-tar")
+}
+
 // ---------- core send ----------
 
 // send melakukan koneksi SMTP relay & mengirim message multipart.
@@ -107,6 +129,11 @@ func (s *Service) send(to, subject, textBody, htmlBody string) error {
 		return fmt.Errorf("build message: %w", err)
 	}
 
+	return s.sendRaw(from.Address, addr.Address, msg)
+}
+
+// sendRaw melakukan koneksi SMTP relay & mengirim raw message bytes.
+func (s *Service) sendRaw(fromAddr, toAddr string, msg []byte) error {
 	host := s.cfg.SMTPHost
 	port := s.cfg.SMTPPort
 	serverAddr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
@@ -127,44 +154,35 @@ func (s *Service) send(to, subject, textBody, htmlBody string) error {
 
 	switch {
 	case s.cfg.SMTPUseTLS:
-		// Implicit TLS (SMTPS, port 465 biasanya)
 		conn, dialErr = tls.DialWithDialer(dialer, "tcp", serverAddr, tlsCfg)
 	default:
-		// Plain TCP (akan di-upgrade kalau STARTTLS aktif)
 		conn, dialErr = dialer.Dial("tcp", serverAddr)
 	}
 	if dialErr != nil {
 		return fmt.Errorf("%w: dial: %v", ErrSendFailed, dialErr)
 	}
-	// Pastikan connection di-close.
 	defer conn.Close()
 
-	client, err = smtp.NewClient(conn, host)
+	client, err := smtp.NewClient(conn, host)
 	if err != nil {
 		return fmt.Errorf("%w: smtp client: %v", ErrSendFailed, err)
 	}
 	defer client.Close()
 
-	// Set deadline supaya hang tidak block forever.
 	_ = conn.SetDeadline(time.Now().Add(s.cfg.SMTPTimeout))
 
 	if err := client.Hello(safeHostname()); err != nil {
 		return fmt.Errorf("%w: EHLO: %v", ErrSendFailed, err)
 	}
 
-	// STARTTLS upgrade (kalau dipilih dan belum dalam TLS)
 	if !s.cfg.SMTPUseTLS && s.cfg.SMTPUseSTARTTLS {
 		if ok, _ := client.Extension("STARTTLS"); ok {
 			if err := client.StartTLS(tlsCfg); err != nil {
 				return fmt.Errorf("%w: starttls: %v", ErrSendFailed, err)
 			}
-		} else {
-			// Server tidak announce STARTTLS — di production sebaiknya fail.
-			// Di dev/internal relay, kita biarkan jalan plaintext.
 		}
 	}
 
-	// Auth (opsional) — banyak SMTP relay internal trust by IP, no auth.
 	if s.cfg.SMTPUsername != "" && s.cfg.SMTPPassword != "" {
 		if ok, _ := client.Extension("AUTH"); ok {
 			auth := smtp.PlainAuth("", s.cfg.SMTPUsername, s.cfg.SMTPPassword, host)
@@ -174,10 +192,10 @@ func (s *Service) send(to, subject, textBody, htmlBody string) error {
 		}
 	}
 
-	if err := client.Mail(from.Address); err != nil {
+	if err := client.Mail(fromAddr); err != nil {
 		return fmt.Errorf("%w: MAIL FROM: %v", ErrSendFailed, err)
 	}
-	if err := client.Rcpt(addr.Address); err != nil {
+	if err := client.Rcpt(toAddr); err != nil {
 		return fmt.Errorf("%w: RCPT TO: %v", ErrSendFailed, err)
 	}
 
@@ -193,11 +211,24 @@ func (s *Service) send(to, subject, textBody, htmlBody string) error {
 		return fmt.Errorf("%w: close body: %v", ErrSendFailed, err)
 	}
 
-	if err := client.Quit(); err != nil {
-		// QUIT error tidak fatal (server kadang tutup duluan).
-		_ = err
-	}
+	_ = client.Quit()
 	return nil
+}
+
+// sendWithAttachment mengirim email dengan attachment file.
+func (s *Service) sendWithAttachment(to, subject, textBody, htmlBody string, attachData []byte, attachName, attachMime string) error {
+	addr, err := mail.ParseAddress(to)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidRecipient, err)
+	}
+	from := mail.Address{Name: s.cfg.SMTPFromName, Address: s.cfg.SMTPFromEmail}
+
+	msg, err := buildMixedMessage(from, *addr, subject, textBody, htmlBody, attachData, attachName, attachMime)
+	if err != nil {
+		return fmt.Errorf("build message: %w", err)
+	}
+
+	return s.sendRaw(from.Address, addr.Address, msg)
 }
 
 // ---------- message builder ----------
@@ -233,6 +264,61 @@ func buildMultipartMessage(from, to mail.Address, subject, text, html string) ([
 
 	// End boundary
 	buf.WriteString("--" + boundary + "--\r\n")
+	return buf.Bytes(), nil
+}
+
+// buildMixedMessage menyusun email multipart/mixed (body + attachment).
+func buildMixedMessage(from, to mail.Address, subject, text, html string, attachData []byte, attachName, attachMime string) ([]byte, error) {
+	var buf bytes.Buffer
+	mixedBoundary := fmt.Sprintf("=_mixed_%d", time.Now().UnixNano())
+	altBoundary := fmt.Sprintf("=_alt_%d", time.Now().UnixNano()+1)
+
+	// Headers
+	buf.WriteString("From: " + from.String() + "\r\n")
+	buf.WriteString("To: " + to.String() + "\r\n")
+	buf.WriteString("Subject: " + mime.QEncoding.Encode("utf-8", subject) + "\r\n")
+	buf.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")
+	buf.WriteString("MIME-Version: 1.0\r\n")
+	buf.WriteString("Content-Type: multipart/mixed; boundary=\"" + mixedBoundary + "\"\r\n")
+	buf.WriteString("\r\n")
+
+	// Part 1: body (multipart/alternative)
+	buf.WriteString("--" + mixedBoundary + "\r\n")
+	buf.WriteString("Content-Type: multipart/alternative; boundary=\"" + altBoundary + "\"\r\n\r\n")
+
+	// Text
+	buf.WriteString("--" + altBoundary + "\r\n")
+	buf.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
+	buf.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+	buf.WriteString(text)
+	buf.WriteString("\r\n")
+
+	// HTML
+	buf.WriteString("--" + altBoundary + "\r\n")
+	buf.WriteString("Content-Type: text/html; charset=\"utf-8\"\r\n")
+	buf.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+	buf.WriteString(html)
+	buf.WriteString("\r\n")
+
+	buf.WriteString("--" + altBoundary + "--\r\n")
+
+	// Part 2: attachment
+	buf.WriteString("--" + mixedBoundary + "\r\n")
+	buf.WriteString("Content-Type: " + attachMime + "; name=\"" + attachName + "\"\r\n")
+	buf.WriteString("Content-Disposition: attachment; filename=\"" + attachName + "\"\r\n")
+	buf.WriteString("Content-Transfer-Encoding: base64\r\n\r\n")
+
+	encoded := base64.StdEncoding.EncodeToString(attachData)
+	// Wrap lines at 76 chars (RFC 2045)
+	for i := 0; i < len(encoded); i += 76 {
+		end := i + 76
+		if end > len(encoded) {
+			end = len(encoded)
+		}
+		buf.WriteString(encoded[i:end] + "\r\n")
+	}
+
+	buf.WriteString("--" + mixedBoundary + "--\r\n")
 	return buf.Bytes(), nil
 }
 

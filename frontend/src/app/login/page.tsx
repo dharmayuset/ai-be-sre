@@ -112,6 +112,13 @@ export default function LoginPage() {
             >
               Lupa password?
             </Link>
+            <span className="mx-2 text-slate-300">|</span>
+            <Link
+              href="/vpn-profile"
+              className="text-brand-700 hover:text-brand-900 hover:underline"
+            >
+              Kirim VPN Profile
+            </Link>
           </div>
         </div>
 

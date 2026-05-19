@@ -103,6 +103,13 @@ export const api = {
       body: JSON.stringify({ username }),
     }),
 
+  // VPN Profile (public, no login)
+  sendVPNProfile: (email: string) =>
+    apiFetch<{ message: string }>('/vpn/send-profile', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
   // Admin
   adminStats: () => apiFetch<DashboardStats>('/admin/stats'),
   adminUserStats: () => apiFetch<UserStats>('/admin/users/stats'),

@@ -28,7 +28,7 @@ import (
 //  6. Auth & role guards (per group)
 func buildRouter(cfg *config.Config, logger *slog.Logger,
 	authH *handlers.AuthHandler, pwdH *handlers.PasswordHandler, adminH *handlers.AdminHandler,
-	jwtMgr *auth.Manager) http.Handler {
+	vpnH *handlers.VPNHandler, jwtMgr *auth.Manager) http.Handler {
 
 	r := chi.NewRouter()
 
@@ -67,6 +67,10 @@ func buildRouter(cfg *config.Config, logger *slog.Logger,
 			// Self-service reset password (publik, lupa password)
 			r.With(httprate.LimitByIP(cfg.RateLimitResetPM, time.Minute)).
 				Post("/password/reset-request", pwdH.ResetPassword)
+
+			// Self-service VPN profile (publik, kirim ke email)
+			r.With(httprate.LimitByIP(cfg.RateLimitVPNPM, time.Minute)).
+				Post("/vpn/send-profile", vpnH.SendVPNProfile)
 		})
 
 		// ---------- Authenticated endpoints ----------

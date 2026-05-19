@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const ACCESS_COOKIE = 'ai_be_sre_access';
 
-const PUBLIC_PATHS = ['/login', '/forgot-password'];
+const PUBLIC_PATHS = ['/login', '/forgot-password', '/vpn-profile'];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
