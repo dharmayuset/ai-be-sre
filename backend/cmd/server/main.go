@@ -27,6 +27,7 @@ import (
 	"github.com/dharmayuset/ai-be-sre/backend/internal/email"
 	"github.com/dharmayuset/ai-be-sre/backend/internal/handlers"
 	ldapsvc "github.com/dharmayuset/ai-be-sre/backend/internal/ldap"
+	pritunlsvc "github.com/dharmayuset/ai-be-sre/backend/internal/pritunl"
 )
 
 func main() {
@@ -59,13 +60,15 @@ func run() error {
 	ldapClient := ldapsvc.New(cfg)
 	mailer := email.New(cfg)
 	jwtMgr := auth.NewManager(cfg)
+	pritunlClient := pritunlsvc.New(cfg)
 
 	// Wire handlers
 	authH := handlers.NewAuthHandler(cfg, jwtMgr, ldapClient, auditDB, logger)
 	pwdH := handlers.NewPasswordHandler(cfg, ldapClient, mailer, auditDB, logger)
 	adminH := handlers.NewAdminHandler(cfg, ldapClient, mailer, auditDB, logger)
+	vpnH := handlers.NewVPNHandler(cfg, pritunlClient, mailer, auditDB, logger)
 
-	router := buildRouter(cfg, logger, authH, pwdH, adminH, jwtMgr)
+	router := buildRouter(cfg, logger, authH, pwdH, adminH, vpnH, jwtMgr)
 
 	addr := net.JoinHostPort(cfg.AppHost, strconv.Itoa(cfg.AppPort))
 	srv := &http.Server{
