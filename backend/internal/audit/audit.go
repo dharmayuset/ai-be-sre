@@ -32,7 +32,6 @@ const (
 	ActionUnlockUser     Action = "admin_unlock_user"
 	ActionDeleteUser     Action = "admin_delete_user"
 	ActionBatchDelete    Action = "admin_batch_delete"
-	ActionSendVPNProfile Action = "send_vpn_profile"
 )
 
 // Status apakah aksi berhasil atau gagal.

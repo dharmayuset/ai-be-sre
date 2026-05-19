@@ -55,19 +55,11 @@ type Config struct {
 	// DB
 	DBPath string
 
-	// Pritunl VPN
-	PritunlBaseURL       string
-	PritunlAPIToken      string
-	PritunlAPISecret     string
-	PritunlOrgIDs        []string // comma-separated organization IDs
-	PritunlSkipTLSVerify bool     // true = skip TLS verify (self-signed cert)
-
 	// Security
 	TempPasswordLength int
 	RateLimitResetPM   int
 	RateLimitAPIPM     int
 	RateLimitLoginPM   int
-	RateLimitVPNPM     int
 }
 
 // Load membaca .env (jika ada) lalu environment variables.
@@ -110,17 +102,10 @@ func Load() (*Config, error) {
 
 		DBPath: getEnv("DB_PATH", "./data/audit.db"),
 
-		PritunlBaseURL:       getEnv("PRITUNL_BASE_URL", ""),
-		PritunlAPIToken:      getEnv("PRITUNL_API_TOKEN", ""),
-		PritunlAPISecret:     getEnv("PRITUNL_API_SECRET", ""),
-		PritunlOrgIDs:        splitCSV(getEnv("PRITUNL_ORG_IDS", "")),
-		PritunlSkipTLSVerify: getEnvBool("PRITUNL_SKIP_TLS_VERIFY", false),
-
 		TempPasswordLength: getEnvInt("TEMP_PASSWORD_LENGTH", 16),
 		RateLimitResetPM:   getEnvInt("RATE_LIMIT_RESET_PER_MIN", 5),
 		RateLimitAPIPM:     getEnvInt("RATE_LIMIT_API_PER_MIN", 60),
 		RateLimitLoginPM:   getEnvInt("RATE_LIMIT_LOGIN_PER_MIN", 10),
-		RateLimitVPNPM:     getEnvInt("RATE_LIMIT_VPN_PER_MIN", 3),
 	}
 
 	if err := cfg.validate(); err != nil {
